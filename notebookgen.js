@@ -17,7 +17,7 @@ const extensions = {
   '.go': 'Golang'
 }
 
-function walk (_path, depth) {
+function walk(_path, depth) {
   let ans = ''
   depth = Math.min(depth, section.length - 1)
   fs.readdirSync(_path).forEach(function (file) {
@@ -44,7 +44,7 @@ function walk (_path, depth) {
  * pdf must be generated twice in order to generate the table of contents.
  * According to some tests, in windows it must be generated 3 times.
  * */
-function genpdf (ans, texPath, tmpobj, iter) {
+function genpdf(ans, texPath, tmpobj, iter) {
   const tex = spawn('pdflatex', [
     '-interaction=nonstopmode',
     texPath
@@ -76,7 +76,7 @@ function genpdf (ans, texPath, tmpobj, iter) {
   })
 }
 
-function pdflatex (doc) {
+function pdflatex(doc) {
   const tmpobj = tmp.dirSync({ unsafeCleanup: true })
   const texPath = path.join(tmpobj.name, '_notebook.tex')
 
@@ -92,14 +92,14 @@ function pdflatex (doc) {
   return ans
 }
 
-function normalizeUnixStyle (currentPath) {
+function normalizeUnixStyle(currentPath) {
   if (os.type() === 'Windows_NT') {
     return currentPath.replace(/\\/g, '/')
   }
   return currentPath
 }
 
-function templateParameter (parameter) {
+function templateParameter(parameter) {
   return `\${${parameter}}`
 }
 
@@ -107,6 +107,7 @@ module.exports = function (_path, options) {
   options.output = options.output || './notebook.pdf'
   options.author = options.author || ''
   options.initials = options.initials || ''
+  options.orientation = options.orientation || 'portrait'
 
   if (!options.size.endsWith('pt')) options.size += 'pt'
   if (options.image) {
@@ -116,17 +117,25 @@ module.exports = function (_path, options) {
     options.image = ''
   }
 
+  let multicolsBegin = ''
+  let multicolsEnd = ''
+  if (parseInt(options.columns) > 1) {
+    multicolsBegin = `\\begin{multicols}{${options.columns}}`
+    multicolsEnd = '\\end{multicols}\n'
+  }
+
   let template = fs.readFileSync(path.join(__dirname, 'template_header.tex')).toString()
   template = template
     .replace(templateParameter('author'), options.author)
     .replace(templateParameter('initials'), options.initials)
     .replace(templateParameter('fontSize'), options.size)
-    .replace(templateParameter('columns'), options.columns)
+    .replace(templateParameter('multicolsBegin'), multicolsBegin)
     .replace(templateParameter('paper'), options.paper)
+    .replace(templateParameter('orientation'), options.orientation)
     .replace(templateParameter('image'), options.image)
 
   template += walk(_path, 0)
-  template += '\\end{multicols}\n'
+  template += multicolsEnd
   template += '\\end{document}'
   pdflatex(template).pipe(fs.createWriteStream(options.output))
 }
