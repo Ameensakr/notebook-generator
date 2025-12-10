@@ -17,8 +17,22 @@ const extensions = {
   '.go': 'Golang'
 }
 
-function walk(_path, depth) {
-  let ans = ''
+function escapeLatex(text) {
+  return text
+    .replace(/\\/g, '\\textbackslash{}')
+    .replace(/_/g, '\\_')
+    .replace(/\{/g, '\\{')
+    .replace(/\}/g, '\\}')
+    .replace(/\$/g, '\\$')
+    .replace(/#/g, '\\#')
+    .replace(/&/g, '\\&')
+    .replace(/\^/g, '\\^{}')
+    .replace(/~/g, '\\~{}')
+    .replace(/%/g, '\\%')
+}
+
+function walkToStream(_path, depth, output) {
+  // multicol package keeps all content in memory, so avoid buffering here
   depth = Math.min(depth, section.length - 1)
   fs.readdirSync(_path).forEach(function (file) {
     if (file.startsWith('.')) {
@@ -27,17 +41,21 @@ function walk(_path, depth) {
     const f = path.resolve(_path, file)
     const stat = fs.lstatSync(f)
     if (stat.isDirectory()) {
-      ans += '\n' + section[depth] + file + '}\n' + walk(f, depth + 1)
+      const title = '\\text{ ' + escapeLatex(file) + ' }'
+      output.write('\n' + section[depth] + title + '}\n')
+      walkToStream(f, depth + 1, output)
     } else if (path.extname(f) in extensions) {
-      ans += '\n' + section[depth] + file.split('.')[0] + '}\n'
+      const title = '\\text{ ' + escapeLatex(file.split('.')[0]) + ' }'
+      output.write('\n' + section[depth] + title + '}\n')
       if (path.extname(f) !== '.tex') {
-        ans += `\\begin{lstlisting}[language=${extensions[path.extname(f)]}]\n` + fs.readFileSync(f) + '\\end{lstlisting}\n'
+        output.write(`\\begin{lstlisting}[language=${extensions[path.extname(f)]}]\n`)
+        output.write(fs.readFileSync(f, 'utf8'))
+        output.write('\\end{lstlisting}\n')
       } else {
-        ans += fs.readFileSync(f)
+        output.write(fs.readFileSync(f, 'utf8'))
       }
     }
   })
-  return ans
 }
 
 /**
@@ -76,19 +94,11 @@ function genpdf(ans, texPath, tmpobj, iter) {
   })
 }
 
-function pdflatex(doc) {
-  const tmpobj = tmp.dirSync({ unsafeCleanup: true })
-  const texPath = path.join(tmpobj.name, '_notebook.tex')
-
+function pdflatexFromPath(texPath, tmpobj) {
   const ans = through2()
   ans.readable = true
-  const input = fs.createWriteStream(texPath)
-  input.end(doc)
-  input.on('close', function () {
-    const iters = process.platform === 'win32' ? 2 : 1
-    genpdf(ans, texPath, tmpobj, iters)
-  })
-
+  const iters = process.platform === 'win32' ? 2 : 1
+  genpdf(ans, texPath, tmpobj, iters)
   return ans
 }
 
@@ -124,6 +134,10 @@ module.exports = function (_path, options) {
     multicolsEnd = '\\end{multicols}\n'
   }
 
+  const tmpobj = tmp.dirSync({ unsafeCleanup: true })
+  const texPath = path.join(tmpobj.name, '_notebook.tex')
+  const texOutput = fs.createWriteStream(texPath, { encoding: 'utf8' })
+
   let template = fs.readFileSync(path.join(__dirname, 'template_header.tex')).toString()
   template = template
     .replace(templateParameter('author'), options.author)
@@ -134,8 +148,16 @@ module.exports = function (_path, options) {
     .replace(templateParameter('orientation'), options.orientation)
     .replace(templateParameter('image'), options.image)
 
-  template += walk(_path, 0)
-  template += multicolsEnd
-  template += '\\end{document}'
-  pdflatex(template).pipe(fs.createWriteStream(options.output))
+  texOutput.write(template)
+  walkToStream(_path, 0, texOutput)
+  texOutput.write(multicolsEnd)
+  texOutput.end('\\end{document}')
+
+  texOutput.on('error', function (err) {
+    console.error('Failed to write tex file', err)
+  })
+
+  texOutput.on('close', function () {
+    pdflatexFromPath(texPath, tmpobj).pipe(fs.createWriteStream(options.output))
+  })
 }

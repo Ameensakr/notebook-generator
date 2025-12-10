@@ -1,13 +1,16 @@
 \documentclass[${fontSize},${paper},${orientation},twosided]{extarticle}
+\UseRawInputEncoding
 
 \usepackage[utf8]{inputenc}
 \usepackage[english]{babel}
 \usepackage{listings}
+\usepackage{listingsutf8} % allow UTF-8 in lstlisting
 \usepackage[usenames,dvipsnames]{color}
 \usepackage{amsmath}
 \usepackage{verbatim}
 \usepackage{hyperref}
 \usepackage{color}
+\hypersetup{hidelinks} % remove colored boxes around links
 \usepackage{geometry}
 \usepackage{multicol}
 \usepackage{graphicx}
@@ -60,6 +63,8 @@
   breakatwhitespace=true,
   tabsize=2,
   keepspaces=true,
+  inputencoding=utf8/latin1,
+  extendedchars=true,
 }
 
 \setlength{\columnsep}{0.5in}
